@@ -94,5 +94,5 @@ While the Swagger UI serves as the software MVP, the final production deployment
 3. **Execution:** A farmer presses a tactile button, triggering `libcamera` to capture a macro-focused image. A lightweight Python script runs the image through the `.tflite` interpreter and communicates the diagnosis back to the user without needing cloud connectivity.
 
 ## 🎥 Link to Demo Video
-* **Watch the Demo:** [Insert YouTube/Google Drive Link Here]
-*(Note: This video demonstrates the model training process, the Swagger UI image upload test, and the successful JSON inference output).*
+* **Watch the Demo:** [Google Drive Link Here](https://drive.google.com/file/d/1QqgHVNTGd_F8X0vIQfMuJUI8mruOS52t/view?usp=sharing)
+
