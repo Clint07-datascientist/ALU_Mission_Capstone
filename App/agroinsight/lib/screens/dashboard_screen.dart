@@ -1,3 +1,4 @@
+import 'farm_heatmap_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -156,6 +157,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                   ),
+            ),
+            const SizedBox(height: 30), // Spacing below the orange button
+            
+            // Secondary Button: View Heatmap
+            Center(
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const FarmHeatmapScreen()),
+                  );
+                },
+                icon: const Icon(FontAwesomeIcons.mapLocationDot, color: Color(0xFF2E7D32)),
+                label: Text(
+                  'VIEW FARM HEATMAP',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: const Color(0xFF2E7D32)),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  side: const BorderSide(color: Color(0xFF2E7D32), width: 2),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                ),
+              ),
             ),
             const Spacer(),
           ],
