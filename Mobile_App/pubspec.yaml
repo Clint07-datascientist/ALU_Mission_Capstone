@@ -1,9 +1,0 @@
-dependencies:
-  flutter:
-    sdk: flutter
-  flutter_blue_plus: ^1.15.0  # For BLE communication with the Pi
-  sqflite: ^2.3.0             # For offline SQLite database
-  path_provider: ^2.1.1       # To locate the database file on the device
-  geolocator: ^10.1.0         # To grab GPS coordinates
-  google_maps_flutter: ^2.5.0 # For the disease heatmap dashboard
-  permission_handler: ^11.0.0 # Crucial for handling Android Location/Bluetooth permissions
