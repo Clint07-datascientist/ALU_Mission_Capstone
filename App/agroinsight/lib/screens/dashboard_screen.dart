@@ -1,3 +1,4 @@
+import '../services/sync_service.dart';
 import 'farm_heatmap_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -181,7 +182,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ),
-            const Spacer(),
+            
+            const SizedBox(height: 16),
+            
+            // Tertiary Button: Sync Offline Records
+            Center(
+              child: TextButton.icon(
+                onPressed: () async {
+                  // Simulate fetching 2 unsynced records from the local SQLite database
+                  List<Map<String, dynamic>> mockUnsyncedData = [
+                    {'farm_id': 'RUT-A1', 'disease_class': 'Leaf rust', 'confidence_score': 0.94, 'gps_latitude': -1.9441, 'gps_longitude': 29.3244},
+                    {'farm_id': 'RUT-B2', 'disease_class': 'Miner', 'confidence_score': 0.88, 'gps_latitude': -1.9445, 'gps_longitude': 29.3250},
+                  ];
+
+                  // Show a quick loading indicator
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Checking connection & syncing...'), duration: Duration(seconds: 1)),
+                  );
+
+                  // Run the Sync Service
+                  CloudSyncService syncService = CloudSyncService();
+                  var result = await syncService.syncOfflineDataToCloud(mockUnsyncedData);
+
+                  // Show the result to the user!
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(result['message']),
+                        backgroundColor: result['status'] == 'success' ? Colors.green : Colors.red,
+                      ),
+                    );
+                  }
+                },
+                icon: const Icon(FontAwesomeIcons.cloudArrowUp, color: Colors.grey),
+                label: Text(
+                  'SYNC OFFLINE RECORDS',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.grey[700]),
+                ),
+              ),
+            ),
+            
+            const Spacer(), // This stays right at the bottom!
           ],
         ),
       ),
