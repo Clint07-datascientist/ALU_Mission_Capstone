@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'screens/dashboard_screen.dart'; // This correctly points to your new UI file
+import 'screens/onboarding_1.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // `firebase_core_web` requires web-specific FirebaseOptions.
+  // Your project currently targets mobile-first, so on Chrome/Web we skip
+  // Firebase initialization to keep the UI runnable for layout testing.
+  if (!kIsWeb) {
+    await Firebase.initializeApp();
+  }
   runApp(const AgroInsightApp());
 }
 
@@ -49,8 +58,7 @@ class AgroInsightApp extends StatelessWidget {
           ),
         ),
       ),
-      // This now perfectly links to the massive orange button screen!
-      home: const DashboardScreen(), 
+      home: const Onboarding1Widget(),
     );
   }
 }

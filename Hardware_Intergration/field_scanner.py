@@ -24,7 +24,7 @@ def load_labels(filename):
 def capture_image():
     print("\n📸 Button pressed! Capturing leaf image...")
     # Use libcamera-jpeg to take a fast, hardware-accelerated photo
-    # We force it to 224x224 to save the CPU from having to resize a massive 5MP image
+    # Force it to 224x224 to save the CPU from having to resize a massive 5MP image
     command = [
         "libcamera-jpeg", 
         "-o", IMAGE_PATH, 
@@ -45,7 +45,7 @@ def run_inference(interpreter, labels):
     img_array = np.expand_dims(img_array, axis=0)
     
     # (Since MobileNetV3 handles its own scaling internally as we discovered earlier, 
-    # we pass the raw 0-255 pixels directly to the TFLite interpreter!)
+    #  Pass the raw 0-255 pixels directly to the TFLite interpreter!)
 
     # 2. Feed the image into the Edge AI model
     input_details = interpreter.get_input_details()
