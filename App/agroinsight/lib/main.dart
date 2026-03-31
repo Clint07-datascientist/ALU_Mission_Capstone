@@ -1,16 +1,26 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/onboarding_1.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // `firebase_core_web` requires web-specific FirebaseOptions.
-  // Your project currently targets mobile-first, so on Chrome/Web we skip
-  // Firebase initialization to keep the UI runnable for layout testing.
+  // Firebase must not block the first frame. On Android, missing
+  // `google-services.json` / Gradle wiring can make `initializeApp` fail or
+  // misbehave; the app is still usable offline without cloud sync until fixed.
   if (!kIsWeb) {
-    await Firebase.initializeApp();
+    try {
+      await Firebase.initializeApp().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => throw TimeoutException('Firebase.initializeApp timed out'),
+      );
+    } catch (e, st) {
+      debugPrint('Firebase init skipped or failed (UI will still run): $e');
+      debugPrint('$st');
+    }
   }
   runApp(const AgroInsightApp());
 }
@@ -35,7 +45,7 @@ class AgroInsightApp extends StatelessWidget {
         
         // Apply modern typography globally
         textTheme: GoogleFonts.poppinsTextTheme(
-          Theme.of(context).textTheme,
+          ThemeData.light().textTheme,
         ),
         
         // Force all cards to have soft, modern rounded corners

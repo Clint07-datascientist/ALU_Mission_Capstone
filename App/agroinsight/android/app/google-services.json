@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "505361860976",
+    "project_id": "agroinsightcapstoneproject",
+    "storage_bucket": "agroinsightcapstoneproject.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:505361860976:android:9e5035907dba55763a67b5",
+        "android_client_info": {
+          "package_name": "com.example.agroinsight"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCc6M_FCNdqfs3Wb4AhLaUNdJJkl5rjr8Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:505361860976:android:5142df90b8785a393a67b5",
+        "android_client_info": {
+          "package_name": "om.example.agroinsight"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCc6M_FCNdqfs3Wb4AhLaUNdJJkl5rjr8Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

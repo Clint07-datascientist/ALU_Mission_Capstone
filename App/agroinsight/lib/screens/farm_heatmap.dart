@@ -46,7 +46,8 @@ class _FarmHeatmapScreenState extends State<FarmHeatmapScreen> {
     final cutoff = DateTime.now().subtract(const Duration(hours: 24));
 
     for (final row in records) {
-      final sector = (row['sector_id'] as String?) ?? 'A1';
+      final dbSector = (row['sector_id'] as String?) ?? 'A1';
+      final uiSector = SectorGrid.pairedSectorId(dbSector);
       final recordedAtRaw = (row['recorded_at'] as String?) ?? '';
       final recordedAt = DateTime.tryParse(recordedAtRaw);
       if (recordedAt == null || recordedAt.isBefore(cutoff)) {
@@ -56,17 +57,20 @@ class _FarmHeatmapScreenState extends State<FarmHeatmapScreen> {
       final name = ((row['disease_name'] as String?) ?? '').trim().toLowerCase();
       final confidence = ((row['confidence_score'] as num?) ?? 0).toDouble();
 
-      var score = 0;
+      var score = -1;
       if (name == 'healthy') {
         score = 0;
-      } else if ((name == 'leaf rust' || name == 'coffee berry borer') &&
+      } else if ((name == 'leaf rust' ||
+              name == 'coffee berry borer' ||
+              name == 'coffee leaf miner' ||
+              name == 'leaf miner') &&
           confidence >= 80.0) {
         score = 2;
-      } else {
+      } else if (name.isNotEmpty) {
         score = 1;
       }
-      final previous = scores[sector] ?? 0;
-      if (score > previous) scores[sector] = score;
+      final previous = scores[uiSector] ?? -1;
+      if (score > previous) scores[uiSector] = score;
     }
 
     if (mounted) {
@@ -113,7 +117,12 @@ class _FarmHeatmapScreenState extends State<FarmHeatmapScreen> {
 
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => SectorOverviewScreen(sectorId: sectorId)),
+      MaterialPageRoute(
+        builder: (_) => SectorOverviewScreen(
+          sectorId: sectorId,
+          queryPairedDbSector: true,
+        ),
+      ),
     );
   }
 
@@ -243,14 +252,14 @@ class _HeatmapPainter extends CustomPainter {
     for (var r = 0; r < rows; r++) {
       for (var c = 0; c < cols; c++) {
         final sectorId = '${String.fromCharCode(65 + r)}${c + 1}';
-        final score = sectorScores[sectorId] ?? 0;
+        final score = sectorScores[sectorId] ?? -1;
         final color = score < 0
             ? const Color(0xFFBDBDBD)
             : score >= 2
-            ? const Color(0xFFF44336)
-            : score == 1
-                ? const Color(0xFFD84315)
-                : const Color(0xFF2E7D32);
+                ? const Color(0xFFF44336)
+                : score == 1
+                    ? const Color(0xFFFFC107)
+                    : const Color(0xFF2E7D32);
 
         final rect = Rect.fromLTWH(c * cellW, r * cellH, cellW - 2, cellH - 2);
         final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(12));
@@ -259,10 +268,15 @@ class _HeatmapPainter extends CustomPainter {
         canvas.drawRRect(rrect, fillPaint);
         canvas.drawRRect(rrect, borderPaint);
 
+        final labelColor = score == 1 ? const Color(0xFF212121) : Colors.white;
         final textPainter = TextPainter(
           text: TextSpan(
             text: sectorId,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+            style: TextStyle(
+              color: labelColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
           ),
           textDirection: TextDirection.ltr,
         )..layout();

@@ -10,7 +10,7 @@ import 'farm_registration.dart';
 import 'history.dart';
 import 'sector_overview.dart';
 import '../services/ble_ingestion_service.dart';
-import '../services/sync_service.dart';
+import '../services/firebase_sync_service.dart';
 
 /// Generate a page named Dashboard
 ///
@@ -32,7 +32,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardWidgetState extends State<DashboardScreen> {
   final scaffoldKey = GlobalKey<ScaffoldState>();
-  CloudSyncService? _cloudSyncService;
+  FirebaseSyncService? _firebaseSyncService;
   final BleScannerService _bleScannerService = BleScannerService.instance;
   bool _syncing = false;
   bool _probeTriggering = false;
@@ -42,7 +42,7 @@ class _DashboardWidgetState extends State<DashboardScreen> {
     super.initState();
     // Web/Chrome: BLE + Firebase are not set up for runtime here, so keep the UI runnable.
     if (!kIsWeb) {
-      _cloudSyncService = CloudSyncService();
+      _firebaseSyncService = FirebaseSyncService();
       _bleScannerService.start();
     }
   }
@@ -65,13 +65,13 @@ class _DashboardWidgetState extends State<DashboardScreen> {
       );
       return;
     }
-    if (_cloudSyncService == null) return;
+    if (_firebaseSyncService == null) return;
     setState(() => _syncing = true);
-    final result = await _cloudSyncService!.syncOfflineDataToCloud();
+    final result = await _firebaseSyncService!.syncOfflineRecords();
     if (!mounted) return;
     setState(() => _syncing = false);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(result['message'].toString())),
+      SnackBar(content: Text(result.message)),
     );
   }
 
@@ -483,6 +483,17 @@ class _DashboardWidgetState extends State<DashboardScreen> {
                           ),
                           FFButtonWidget(
                             onPressed: _syncing ? null : _syncNow,
+                            icon: _syncing
+                                ? SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: FlutterFlowTheme.of(context)
+                                          .secondaryText,
+                                    ),
+                                  )
+                                : null,
                             text: _syncing ? 'SYNCING...' : 'SYNC OFFLINE RECORDS',
                             options: FFButtonOptions(
                               width: double.infinity,
@@ -490,8 +501,10 @@ class _DashboardWidgetState extends State<DashboardScreen> {
                               padding:
                                   EdgeInsetsDirectional.fromSTEB(24, 0, 24, 0),
                               iconPadding:
-                                  EdgeInsetsDirectional.fromSTEB(0, 0, 0, 0),
+                                  EdgeInsetsDirectional.fromSTEB(0, 0, 8, 0),
                               color: Colors.transparent,
+                              iconColor: FlutterFlowTheme.of(context)
+                                  .secondaryText,
                               textStyle: FlutterFlowTheme.of(context)
                                   .titleSmall
                                   .override(

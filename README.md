@@ -1,98 +1,159 @@
-# Initial software product/solution demonstration
+# AgroInsight Edge AI: Coffee Disease Diagnostic System
 
-# AgroInsight Edge AI: Coffee Disease Diagnostic Model
+End-to-end capstone project for smallholder farmers in Rutsiro, Rwanda: a **MobileNetV3** model (trained on JMuBEN) exported to **quantized TFLite**, a **Raspberry Pi** field probe, and a **Flutter** Android app for scans, farm registration, heatmaps, history, and optional **Firebase Firestore** sync when online.
 
-## 📌 Description
-This project is an Edge-AI machine learning pipeline designed to detect and classify coffee leaf diseases (specifically Leaf Rust and Leaf Miner) for smallholder farmers in Rutsiro, Rwanda. Built as a Capstone project, it utilizes a deeply optimized MobileNetV3 neural network trained on the JMuBEN dataset. The model is compressed via Post-Training Quantization (TFLite) to run efficiently on low-power, disconnected hardware (Raspberry Pi Zero 2 W) directly in the coffee fields, providing real-time diagnostic insights without requiring an internet connection.
+---
 
-## 🔗 Notebook Link
-* **Google Colab Notebook:** [Click here](https://colab.research.google.com/drive/1H3Bt8o7bCTW6ImWP1zTfGbhgimX-4LIf?usp=sharing)
+## What’s in this repository
 
-## ⚙️ How to Set Up the Environment and Project
+| Path | Purpose |
+|------|--------|
+| `Machine_Learning_Pipeline/` | Local copy of the training notebook (`Capstone_Project.ipynb`). Primary workflow is still the linked **Google Colab** notebook below. |
+| `App/agroinsight/` | **Flutter** mobile app (**AgroInsight Edge**): onboarding, dashboard, BLE link to the probe, SQLite storage, sector math, farm heatmap, Firestore sync. |
+| `Hardware_Intergration/` | `field_scanner.py` — button-triggered capture on the Pi, **TFLite** inference, console diagnosis (GPIO + `libcamera-jpeg`). |
+| `Final_Version.md` | Capstone write-up: objectives, testing narrative, performance table, recommendations, and future work. |
 
-### 1. Cloud Training & API Testing Environment (Google Colab)
-To reproduce the training pipeline or test the live API mockup:
-1. Open the linked Google Colab notebook.
-2. Ensure your runtime is set to a GPU (e.g., T4, V100, or A100).
-3. Run the notebook sequentially from top to bottom. The notebook will automatically download the JMuBEN dataset via the Kaggle API.
-4. The final cell will launch a background FastAPI server and provide a secure link to access the interactive **Swagger UI** for testing image uploads.
+The quantized model file (`agroinsight_mobilenetv3_quantized.tflite`) and `labels.txt` are produced by the training notebook and should be placed where your Pi script and deployment expect them (see **Hardware probe**).
 
-### 2. Edge Hardware Environment (Raspberry Pi Zero 2 W)
-To deploy the exported `.tflite` model to the physical diagnostic probe:
-1. Flash a microSD card with Raspberry Pi OS Lite (64-bit).
-2. Connect the Raspberry Pi Camera Rev 1.3 (with manual macro-focus modification) and a 12x12mm tactile button to GPIO 17.
-3. Install the lightweight inference dependencies:
+---
+
+## Quick links
+
+- **Google Colab (training + FastAPI / Swagger MVP):** [Open notebook](https://colab.research.google.com/drive/1H3Bt8o7bCTW6ImWP1zTfGbhgimX-4LIf?usp=sharing)
+- **Demo video:** [Google Drive](https://drive.google.com/file/d/1QqgHVNTGd_F8X0vIQfMuJUI8mruOS52t/view?usp=sharing)
+
+---
+
+## Machine learning pipeline
+
+### Description
+
+Edge-AI pipeline to detect and classify coffee leaf diseases (**Leaf Rust**, **Leaf Miner**, **Healthy**) using a compact **MobileNetV3** network, with **post-training quantization** to **TFLite** for low-power ARM devices (e.g. Raspberry Pi Zero 2 W) without requiring cloud inference.
+
+### Cloud training and API mockup (Google Colab)
+
+1. Open the Colab link above.
+2. Used a GPU runtime (T4 and A100).
+3. Run cells in order; the notebook pulls **JMuBEN** via the Kaggle API.
+4. The final cells can expose a **FastAPI** service with **Swagger UI** for multipart image upload and JSON diagnosis (same preprocessing as training).
+
+### Local notebook
+
+You can also open `Machine_Learning_Pipeline/Capstone_Project.ipynb` in Jupyter or VS Code for offline inspection; full GPU training is still easiest in Colab.
+
+### ML track requirements (summary)
+
+1. **Data:** `tf.data` with prefetch/shuffle; balanced classes (**Healthy**, **Leaf rust**, **Miner**).
+2. **Model:** MobileNetV3, **GlobalAveragePooling2D**, dense **Softmax** head; **Adam** + categorical cross-entropy; **EarlyStopping**.
+3. **Evaluation:** Classification report (accuracy, precision, recall, F1) and confusion matrix on a validation split.
+4. **MVP:** FastAPI + Swagger in Colab for upload → preprocess → predict → JSON.
+
+### Model results and visualizations
+
+**Class distribution** — balanced training set to reduce majority-class bias.
+
+![Dataset class distribution](https://github.com/user-attachments/assets/342cc737-e257-4668-a415-bf13cfd69b63)
+
+**Preprocessed batch (224×224)** — confirms labels and visible pathology cues.
+
+![Preprocessed samples](https://github.com/user-attachments/assets/940ab199-8658-4d75-9cde-91d4796d1848)
+
+**Training curves** — accuracy/loss; early stopping when validation loss plateaus.
+
+![Training history](https://github.com/user-attachments/assets/342cc737-e220-43c7-96cf-5af12b151d1a)
+
+**Confusion matrix** — diagonal mass vs off-diagonal confusions (e.g. early rust vs healthy).
+
+![Confusion matrix](https://github.com/user-attachments/assets/1bdbb89a-b49a-4a73-ab5b-0bc515d2e50a)
+
+---
+
+## Flutter mobile app (`App/agroinsight`)
+
+Android-focused **Material 3** UI (**AgroInsight Edge**): onboarding flow, dashboard with **SCAN LEAF** (BLE-triggered probe), farm registration, **farm heatmap**, **sector overview**, **history**, and **Sync offline records** when the device has connectivity.
+
+### Main technologies
+
+- **State / UI:** Flutter, Provider, Google Fonts, custom Flutter Flow–style widgets under `lib/flutter_flow/`.
+- **Local data:** **SQLite** (`sqflite`) — farms and `disease_records` with optional `is_synced` flag.
+- **Probe link:** **Bluetooth LE** (`flutter_blue_plus`) — looks for a peripheral named **`AgroInsight-Probe`** and uses the GATT service/characteristics defined in `lib/services/ble_ingestion_service.dart`.
+- **Location:** **Geolocator** + sector logic in `lib/core/geo/sector_math.dart`.
+- **Cloud (optional):** **Firebase Core** + **Cloud Firestore** — `FirebaseSyncService` uploads pending rows to the **`farm_scans`** collection in batches; requires a valid Firebase Android setup.
+
+### Run the app (development)
+
+Prerequisites: [Flutter SDK](https://docs.flutter.dev/get-started/install) (Dart `>=3.0.0 <4.0.0`), Android SDK, and a device or emulator.
+
+```bash
+cd App/agroinsight
+flutter pub get
+flutter run
+```
+
+### Firebase on Android
+
+1. Create a Firebase project and add an Android app with package **`com.example.agroinsight`** (or change `applicationId` in `android/app/build.gradle` to match your Firebase app).
+2. Download **`google-services.json`** into `android/app/` (this file is **not** committed in public repos if it contains secrets; team members add their own).
+3. The app calls `Firebase.initializeApp()` in `lib/main.dart` inside a **try/catch** so the UI still runs if Firebase is missing or misconfigured; **Firestore sync** only works when initialization succeeds.
+
+### Web note
+
+BLE and native Firebase paths are not fully wired for **web**; the dashboard guards some flows so the project can still be opened in Chrome for UI checks.
+
+More capstone-oriented install and testing narrative lives in **`Final_Version.md`** (e.g. APK distribution, field testing).
+
+---
+
+## Hardware probe (`Hardware_Intergration/field_scanner.py`)
+
+Standalone Pi workflow: **GPIO button** (default pin **17**) triggers **`libcamera-jpeg`** to save **`captures/current_scan.jpg`** at **224×224**, then **TFLite** inference with labels from **`labels.txt`**.
+
+### Pi setup (summary)
+
+1. Raspberry Pi OS Lite (64-bit) on SD card.
+2. Camera (e.g. Pi Camera Rev 1.3) and tactile button on **GPIO 17** (as in script).
+3. Install dependencies:
+
    `pip install tflite-runtime gpiozero Pillow numpy`
-4. Place the exported `agroinsight_mobilenetv3_quantized.tflite` model and the `field_scanner.py` script into your project directory and execute the script.
 
-## 📊 Breakdown of the ML Track Requirements
+4. Ensure **`libcamera-jpeg`** is available on the system.
+5. Place **`agroinsight_mobilenetv3_quantized.tflite`** under **`models/`** (or adjust `MODEL_PATH`) and **`labels.txt`** next to the script.
 
-### 1. Data Visualization and Data Engineering
-The model is trained on a refined subset of the JMuBEN dataset, specifically targeting the diseases most relevant to our deployment scope in Rwanda.
-* **Data Pipeline:** Utilizes TensorFlow's `tf.data` API with aggressive prefetching and shuffling to stream data efficiently without overloading system RAM.
-* **Distributions:** The dataset is strictly balanced across the three target classes (`Healthy`, `Leaf rust`, and `Miner`) to prevent majority-class bias.
-
-### 2. Model Architecture
-
-* **Base Model:** `MobileNetV3` (Chosen specifically for its low parameter count and high efficiency on ARM-based edge CPUs).
-* **Preprocessing:** Leverages MobileNetV3's native internal rescaling layer (handling raw 0-255 pixel inputs directly).
-* **Custom Top Layers:** * `GlobalAveragePooling2D()` to flatten the feature maps.
-  * A dense output layer with a `Softmax` activation function to generate multi-class probability scores.
-* **Optimization:** Compiled with the `Adam` optimizer and a categorical cross-entropy loss function. Early Stopping callbacks are injected to prevent overfitting.
-
-### 3. Initial Performance Metrics
-After training, the model was evaluated against a dedicated validation split. 
-* **Metrics Tracked:** The notebook outputs a detailed classification report encompassing **Accuracy, Precision, Recall, and F1-Scores** across all individual classes.
-* **Visual Evaluation:** A Confusion Matrix is generated to visualize false-positive and false-negative rates, proving the model's reliability in distinguishing between Rust and Miner damage.
-
-### 4. Deployment Option: Mockup / MVP
-For the MVP deployment requirement, this project features an **API UI (Swagger UI)** mockup.
-* **Architecture:** Built using `FastAPI` and deployed directly within the Colab environment using dynamic port forwarding. 
-* **Functionality:** The Swagger UI provides an interactive web interface where users can upload raw `.jpg` images of coffee leaves. The API receives the multipart file, applies the exact native MobileNetV3 mathematical preprocessing used during training, feeds it into the model residing in RAM, and returns a formatted JSON response detailing the diagnosis and confidence score.
+The **Flutter** app’s BLE integration expects a companion firmware/service on the probe that matches the UUIDs in `ble_ingestion_service.dart`; `field_scanner.py` is the **local button + inference** reference path. A separate **WiFi / HTTP** probe server is described in **`Final_Version.md`** as an alternative architecture for demos.
 
 ---
 
-## 📈 Model Results & Visualizations
+## Offline data and Firestore sync
 
-To ensure the model is learning the true physiological differences between coffee leaf diseases rather than memorizing background noise, we generated several visualizations throughout the data pipeline and training process.
-
-### 1. Dataset Class Distribution (Bar Graph)
-Before training, it is critical to understand the mathematical composition of the dataset.
-* **The Bar Graph:** This visualization displays the exact number of images representing `Healthy`, `Leaf rust`, and `Miner` leaves in our training set. 
-* **Why it matters:** Ensuring a relatively balanced distribution prevents the neural network from developing a "majority class bias." If the dataset was overwhelmingly healthy leaves, the model could achieve high accuracy by simply guessing "Healthy" every time, which would make the hardware probe useless in actual Rwandan coffee fields.
-
-![Image](https://github.com/user-attachments/assets/342cc737-e257-4668-a415-bf13cfd69b63)
-
-### 2. Preprocessed Coffee Leaf Data (3x3 Grid)
-We must verify that the TensorFlow data pipeline correctly loads, scales, and maps the raw JMuBEN images to their respective class labels before feeding them into the model.
-* **3x3 Image Grid:** This displays a random batch of data exactly as the neural network sees it at the 224x224 input resolution.
-* **Visual Markers:** It confirms that the distinct pathologies—such as the yellow/orange powdery lesions of **Leaf rust** and the irregular, necrotic serpentine trails of the **Miner**—are clearly visible, distinct from one another, and correctly labeled by the algorithm.
-
-![Image](https://github.com/user-attachments/assets/940ab199-8658-4d75-9cde-91d4796d1848)
-
-### 3. Training History: Accuracy & Loss
-The model's learning process was tracked across multiple epochs to monitor for convergence and evaluate how well it generalizes to unseen data.
-* **Accuracy Curve:** The upward trajectory of the training and validation accuracy graphs proves the optimized MobileNetV3 architecture is successfully extracting the relevant visual feature maps from the leaves.
-* **Loss Curve:** The validation loss steadily decreases alongside the training loss. The exact point where the validation loss stops decreasing and flattens out is where the `EarlyStopping` callback automatically halted the training loop. This perfectly locks in the best weights and prevents the model from overfitting the training data.
-
-![Image](https://github.com/user-attachments/assets/329f4996-c220-43c7-96cf-5af12b151d1a)
-
-### 4. Validation Performance: Confusion Matrix
-Raw accuracy is not sufficient for an agricultural diagnostic tool. To truly understand the model's real-world viability, we generated a Confusion Matrix evaluating the model against the isolated validation dataset.
-* **The Diagonal:** The heavily weighted (darker) diagonal running across the matrix represents correct, high-confidence predictions.
-* **Misclassifications:** By examining the off-diagonal squares, we can identify exact failure points—for instance, measuring how often the model mistakenly identifies early-stage Leaf rust as a Healthy leaf. This matrix visually backs up our Precision, Recall, and F1-scores, proving the mathematical reliability of the model prior to compressing it for the Raspberry Pi hardware.
-
-![Image](https://github.com/user-attachments/assets/1bdbb89a-b49a-4a73-bab5-0bc515d2e50a)
+- **SQLite tables:** `farms` (name + bounding box), `disease_records` (farm, disease, confidence, lat/lng, `sector_id`, `device_id`, `recorded_at`, `is_synced`).
+- **Sync:** When online, pending records (`is_synced = 0`) are written to Firestore **`farm_scans`** with document IDs derived from the local integer id for idempotent retries; see `lib/services/firebase_sync_service.dart`.
 
 ---
 
-## 🚀 Deployment Plan
+## Deployment plan
 
-While the Swagger UI serves as the software MVP, the final production deployment is strictly Edge-based.
-1. **Quantization:** The trained Keras model is converted to `.tflite` format using dynamic range quantization, reducing its memory footprint to fit the Pi Zero 2 W's 512MB RAM constraints.
-2. **Hardware Integration:** The model will execute locally on a custom handheld probe. 
-3. **Execution:** A farmer presses a tactile button, triggering `libcamera` to capture a macro-focused image. A lightweight Python script runs the image through the `.tflite` interpreter and communicates the diagnosis back to the user without needing cloud connectivity.
+1. **Quantization:** Export Keras → **TFLite** with dynamic range quantization for a small footprint on **512MB** class devices.
+2. **Edge inference:** Run the interpreter on the Pi (or equivalent) with field capture pipeline.
+3. **Phone:** Acts as UI, BLE client, and local/optional cloud logger rather than running the heavy model on-device in the current design.
 
-## 🎥 Link to Demo Video
-* **Watch the Demo:** [Google Drive Link Here](https://drive.google.com/file/d/1QqgHVNTGd_F8X0vIQfMuJUI8mruOS52t/view?usp=sharing)
+Representative latency comparison (from **`Final_Version.md`**):
 
+| Environment | RAM | Model | Approx. inference |
+|-------------|-----|--------|-------------------|
+| Cloud GPU (T4) | ~16GB | FP32 Keras | ~0.2s |
+| Raspberry Pi Zero 2 W | 512MB | INT8 TFLite | ~1.8s |
+
+---
+
+## Recommendations and future work (summary)
+
+- **Cooperatives:** Share a small pool of probes among lead farmers rather than one device per household.
+- **Model:** Extend to additional crops or pests; iterate on multi-pathology images.
+- **Hardware:** Optional drone or canopy-mounted capture (see **`Final_Version.md`**).
+
+---
+
+## Further reading
+
+- **`Final_Version.md`** — full product narrative, testing strategies, objectives vs results, and repository notes (including references to `probe_server.py` / APK artifacts that may live outside this git tree).
+- **`App/agroinsight/README.md`** — default Flutter starter text; **this root README** is the main project entry point.

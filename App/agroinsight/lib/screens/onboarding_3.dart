@@ -59,13 +59,19 @@ class _Onboarding3WidgetState extends State<Onboarding3Widget> {
         backgroundColor: Color(0xFFF5F7F5),
         body: SafeArea(
           top: true,
-          child: Column(
-            mainAxisSize: MainAxisSize.max,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints:
+                      BoxConstraints(minHeight: constraints.maxHeight),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
               Container(
                 width: double.infinity,
-                height: MediaQuery.sizeOf(context).height * 0.6,
+                height: (constraints.maxHeight * 0.52).clamp(260.0, 420.0),
                 decoration: BoxDecoration(
                   color: Color(0xFFF5F7F5),
                 ),
@@ -326,7 +332,11 @@ class _Onboarding3WidgetState extends State<Onboarding3Widget> {
                   ].divide(SizedBox(height: 0)),
                 ),
               ),
-            ],
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ),

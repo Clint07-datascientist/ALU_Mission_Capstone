@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../core/database/database_helper.dart';
 import '../core/geo/sector_math.dart';
+import 'demo_farm_seed.dart';
 
 enum BleConnectionStateUi {
   disconnectedSearching,
@@ -35,6 +36,10 @@ class BleTriggerResult {
 class BleScannerService extends ChangeNotifier {
   BleScannerService._();
   static final BleScannerService instance = BleScannerService._();
+
+  /// When `true`, skips BLE scan/connect/write/notify and uses [simulateHardwareScan]
+  /// for demos (e.g. failed Pi radio). Set to `false` when hardware is restored.
+  static bool useHardwareSimulation = true;
 
   static const String targetDeviceName = 'AgroInsight-Probe';
   static const String serviceUuid = '80323644-3537-4F0B-A53B-CF494ECEAABF';
@@ -71,6 +76,16 @@ class BleScannerService extends ChangeNotifier {
     _starting = true;
     debugPrint('[BLE] start() called');
     try {
+      if (useHardwareSimulation) {
+        debugPrint('[BLE] Simulation mode: skipping Bluetooth scan/connect.');
+        _setUi(
+          BleConnectionStateUi.connectedIdle,
+          'Demo: probe simulated (no BLE)',
+        );
+        await DemoFarmSeed.seedFullFarmGrid();
+        return;
+      }
+      // Real hardware path (flutter_blue_plus).
       await _startScanAndConnect();
     } finally {
       _starting = false;
@@ -79,8 +94,110 @@ class BleScannerService extends ChangeNotifier {
 
   Future<void> manualRescan() async {
     debugPrint('[BLE] manualRescan() called by UI');
+    if (useHardwareSimulation) {
+      debugPrint('[BLE] Simulation mode: refreshing demo farm grid.');
+      _setUi(
+        BleConnectionStateUi.connectedIdle,
+        'Demo: probe simulated (no BLE)',
+      );
+      await DemoFarmSeed.seedFullFarmGrid();
+      return;
+    }
     await stop();
     await start();
+  }
+
+  /// Mock probe: ~MobileNetV3 inference delay, then the demo JSON (see also [_normalizeProbePayload]).
+  Future<String> simulateHardwareScan() async {
+    await Future.delayed(const Duration(seconds: 2));
+    return '{"disease": "Coffee Leaf Rust", "confidence": 0.94}';
+  }
+
+  /// Accepts Pi-style (`disease_name`, `confidence_score`) or demo keys (`disease`, `confidence`).
+  /// [confidence] in (0,1] is treated as a fraction and scaled to 0–100 for SQLite / heatmap rules.
+  Map<String, Object> _normalizeProbePayload(Map<String, dynamic> raw) {
+    final diseaseRaw = raw['disease_name'] ?? raw['disease'];
+    final diseaseName = diseaseRaw is String
+        ? diseaseRaw
+        : (diseaseRaw?.toString() ?? 'Unknown');
+
+    final confRaw = raw['confidence_score'] ?? raw['confidence'];
+    var confidenceScore = (confRaw is num ? confRaw.toDouble() : 0.0);
+    if (confidenceScore > 0 && confidenceScore <= 1.0) {
+      confidenceScore *= 100.0;
+    }
+
+    final deviceId = (raw['device_id'] is String && (raw['device_id'] as String).isNotEmpty)
+        ? raw['device_id'] as String
+        : 'simulated-probe';
+
+    return {
+      'disease_name': diseaseName,
+      'confidence_score': confidenceScore,
+      'device_id': deviceId,
+    };
+  }
+
+  /// Shared path: GPS + sector + SQLite insert (+ optional completer for BLE trigger).
+  /// Returns `null` if no farm is registered (same as legacy notify-only behaviour).
+  Future<BleTriggerResult?> _ingestProbeData(
+    String diseaseName,
+    double confidenceScore,
+    String deviceId,
+  ) async {
+    final farm = await DatabaseHelper.instance.getLatestFarm();
+    if (farm == null) {
+      debugPrint('[BLE] No farm in SQLite. Cannot map sector.');
+      return null;
+    }
+
+    final position = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+    );
+    debugPrint('[BLE] GPS position lat=${position.latitude} lng=${position.longitude}');
+
+    final sectorId = SectorGrid.computeSectorId(
+      minLat: (farm['min_lat'] as num).toDouble(),
+      maxLat: (farm['max_lat'] as num).toDouble(),
+      minLng: (farm['min_lng'] as num).toDouble(),
+      maxLng: (farm['max_lng'] as num).toDouble(),
+      latitude: position.latitude,
+      longitude: position.longitude,
+    );
+
+    final recordId = await DatabaseHelper.instance.insertDiseaseRecord({
+      'farm_id': farm['id'],
+      'disease_name': diseaseName,
+      'confidence_score': confidenceScore,
+      'latitude': position.latitude,
+      'longitude': position.longitude,
+      'sector_id': sectorId,
+      'device_id': deviceId,
+      'recorded_at': DateTime.now().toIso8601String(),
+      'is_synced': 0,
+    });
+
+    debugPrint('[BLE] SQLite insert success id=$recordId sector=$sectorId');
+    lastPayloadAt = DateTime.now();
+
+    final result = BleTriggerResult(
+      sectorId: sectorId,
+      recordId: recordId,
+      diseaseName: diseaseName,
+      confidenceScore: confidenceScore,
+      deviceId: deviceId,
+    );
+
+    final completer = _pendingTrigger;
+    if (completer != null && !completer.isCompleted) {
+      _pendingTrigger = null;
+      debugPrint('[BLE] Completing trigger with sector=$sectorId recordId=$recordId');
+      completer.complete(result);
+    } else {
+      debugPrint('[BLE] No pending trigger waiting; payload stored only.');
+    }
+
+    return result;
   }
 
   Future<void> _startScanAndConnect() async {
@@ -224,71 +341,26 @@ class BleScannerService extends ChangeNotifier {
       debugPrint('[BLE] Raw payload bytes=${bytes.length} content=$payloadString');
 
       final payload = jsonDecode(payloadString) as Map<String, dynamic>;
-      final diseaseName = (payload['disease_name'] as String?) ?? 'Unknown';
-      final confidenceScore = (payload['confidence_score'] as num?)?.toDouble() ?? 0.0;
-      final deviceId = (payload['device_id'] as String?) ?? 'Unknown';
+      final norm = _normalizeProbePayload(payload);
+      final diseaseName = norm['disease_name']! as String;
+      final confidenceScore = norm['confidence_score']! as double;
+      final deviceId = norm['device_id']! as String;
 
       debugPrint(
         '[BLE] Parsed payload disease_name=$diseaseName confidence_score=$confidenceScore device_id=$deviceId',
       );
 
-      final farm = await DatabaseHelper.instance.getLatestFarm();
-      if (farm == null) {
-        debugPrint('[BLE] No farm in SQLite. Cannot map sector.');
-        _setUi(BleConnectionStateUi.connectedIdle, 'Hardware Probe Ready');
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-      );
-      debugPrint('[BLE] GPS position lat=${position.latitude} lng=${position.longitude}');
-
-      final sectorId = SectorGrid.computeSectorId(
-        minLat: (farm['min_lat'] as num).toDouble(),
-        maxLat: (farm['max_lat'] as num).toDouble(),
-        minLng: (farm['min_lng'] as num).toDouble(),
-        maxLng: (farm['max_lng'] as num).toDouble(),
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-
-      final recordId = await DatabaseHelper.instance.insertDiseaseRecord({
-        'farm_id': farm['id'],
-        'disease_name': diseaseName,
-        'confidence_score': confidenceScore,
-        'latitude': position.latitude,
-        'longitude': position.longitude,
-        'sector_id': sectorId,
-        'device_id': deviceId,
-        'recorded_at': DateTime.now().toIso8601String(),
-        'is_synced': 0,
-      });
-
-      debugPrint('[BLE] SQLite insert success id=$recordId sector=$sectorId');
-      lastPayloadAt = DateTime.now();
-
-      final completer = _pendingTrigger;
-      if (completer != null && !completer.isCompleted) {
-        debugPrint('[BLE] Completing pending trigger with sector=$sectorId recordId=$recordId');
-        _pendingTrigger = null;
-        completer.complete(
-          BleTriggerResult(
-            sectorId: sectorId,
-            recordId: recordId,
-            diseaseName: diseaseName,
-            confidenceScore: confidenceScore,
-            deviceId: deviceId,
-          ),
-        );
-      } else {
-        debugPrint('[BLE] No pending trigger waiting; payload stored only.');
-      }
+      await _ingestProbeData(diseaseName, confidenceScore, deviceId);
     } catch (e, stack) {
       debugPrint('[BLE] Payload handling error: $e');
       debugPrint('[BLE] Stack: $stack');
     } finally {
-      _setUi(BleConnectionStateUi.connectedIdle, 'Hardware Probe Ready');
+      _setUi(
+        BleConnectionStateUi.connectedIdle,
+        useHardwareSimulation
+            ? 'Demo: probe simulated (no BLE)'
+            : 'Hardware Probe Ready',
+      );
     }
   }
 
@@ -300,6 +372,37 @@ class BleScannerService extends ChangeNotifier {
       throw StateError('A probe trigger is already in progress.');
     }
 
+    if (useHardwareSimulation) {
+      _setUi(BleConnectionStateUi.receivingData, 'Analyzing Leaf...');
+      try {
+        final payloadString = await simulateHardwareScan();
+        debugPrint('[BLE] Simulated payload: $payloadString');
+        final payload = jsonDecode(payloadString) as Map<String, dynamic>;
+        final norm = _normalizeProbePayload(payload);
+        final diseaseName = norm['disease_name']! as String;
+        final confidenceScore = norm['confidence_score']! as double;
+        final deviceId = norm['device_id']! as String;
+
+        final result = await _ingestProbeData(
+          diseaseName,
+          confidenceScore,
+          deviceId,
+        );
+        if (result == null) {
+          throw StateError(
+            'No farm registered offline. Register a farm before scanning.',
+          );
+        }
+        return result;
+      } finally {
+        _setUi(
+          BleConnectionStateUi.connectedIdle,
+          'Demo: probe simulated (no BLE)',
+        );
+      }
+    }
+
+    // --- Real BLE trigger (write char + await notify) ---
     final startedAt = DateTime.now();
     await start();
 
@@ -378,6 +481,16 @@ class BleScannerService extends ChangeNotifier {
 
   Future<void> stop() async {
     debugPrint('[BLE] stop() called');
+    if (useHardwareSimulation) {
+      _reconnectTimer?.cancel();
+      _reconnectTimer = null;
+      _pendingTrigger = null;
+      _setUi(
+        BleConnectionStateUi.disconnectedSearching,
+        'Demo: probe simulated (no BLE)',
+      );
+      return;
+    }
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     await _scanSub?.cancel();

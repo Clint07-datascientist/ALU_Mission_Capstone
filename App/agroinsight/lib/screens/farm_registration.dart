@@ -6,6 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../core/database/database_helper.dart';
+import '../services/ble_ingestion_service.dart';
+import '../services/demo_farm_seed.dart';
 import 'farm_heatmap.dart';
 
 class FarmRegistrationScreen extends StatefulWidget {
@@ -98,6 +100,10 @@ class _FarmRegistrationWidgetState extends State<FarmRegistrationScreen> {
         'min_lng': minLng,
         'max_lng': maxLng,
       });
+
+      if (BleScannerService.useHardwareSimulation) {
+        await DemoFarmSeed.seedFullFarmGrid();
+      }
 
       if (!mounted) return;
       _showSnack('Farm saved offline (ID: $farmId).');

@@ -166,6 +166,57 @@ CREATE TABLE $tableDiseaseRecords (
     );
   }
 
+  /// Latest scan row for a sector (sector-specific overview / insights).
+  Future<Map<String, dynamic>?> getLatestRecordForFarmSector({
+    required int farmId,
+    required String sectorId,
+  }) async {
+    final db = await database;
+    final rows = await db.query(
+      tableDiseaseRecords,
+      where: 'farm_id = ? AND sector_id = ?',
+      whereArgs: [farmId, sectorId],
+      orderBy: 'recorded_at DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  /// Count of scans in [sectorId] for [farmId] within the last [within] window.
+  Future<int> countRecordsForFarmSectorSince({
+    required int farmId,
+    required String sectorId,
+    required DateTime since,
+  }) async {
+    final db = await database;
+    final sinceStr = since.toIso8601String();
+    final rows = await db.rawQuery(
+      '''
+SELECT COUNT(*) AS c FROM $tableDiseaseRecords
+WHERE farm_id = ? AND sector_id = ? AND recorded_at >= ?
+''',
+      [farmId, sectorId, sinceStr],
+    );
+    final n = rows.first['c'];
+    if (n is int) return n;
+    if (n is num) return n.toInt();
+    return 0;
+  }
+
+  /// Removes rows tagged with [deviceId] (e.g. demo seed) for one farm.
+  Future<int> deleteDiseaseRecordsForFarmByDeviceId(
+    int farmId,
+    String deviceId,
+  ) async {
+    final db = await database;
+    return db.delete(
+      tableDiseaseRecords,
+      where: 'farm_id = ? AND device_id = ?',
+      whereArgs: [farmId, deviceId],
+    );
+  }
+
   /// Rows that still need to be pushed to the cloud.
   Future<List<Map<String, dynamic>>> getUnsyncedRecords() async {
     final db = await database;
